@@ -1,2 +1,5 @@
-vendor
+.vscode
+/vendor/
+/vendor-bin/**/vendor/
+/.php-cs-fixer.cache
 icons
