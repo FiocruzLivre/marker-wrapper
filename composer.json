@@ -1,5 +1,7 @@
 {
     "require": {
-        "guzzlehttp/guzzle": "^7.9"
+        "guzzlehttp/guzzle": "^7.9",
+        "sabre/xml": "^4.0",
+        "spatie/color": "^1.8"
     }
 }

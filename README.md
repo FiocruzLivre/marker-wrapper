@@ -42,6 +42,13 @@ Change this at your LocalSettings.php:
 
 ```php
 $wgKartographerMapServer = 'http://localhost:8081';
+$wgKartographerSimpleStyleMarkers = true;
 ```
 
 At your `.env` file add the URL of your tile server to var `TILE_SERVER`
+
+Run the follow commands
+
+```bash
+docker compose exec marker composer i --no-dev
+```
