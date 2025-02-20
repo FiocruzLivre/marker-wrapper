@@ -27,14 +27,13 @@ Add this to your composer-json.yml
 Clone this repository at `volumes/marker`:
 
 ```bash
-git clone https://github.com/mapbox/maki/tree/main/icons volumes/marker
+git clone https://github.com/FiocruzLivre/marker-wrapper volumes/marker
 ```
 
 Clone the follow repository at volumes/marker/icons/
 
 ```bash
-mkdir -p volumes/marker/icons
-git clone https://github.com/mapbox/maki volumes/marker/icons/maki
+git clone https://github.com/mapbox/maki/ volumes/marker/icons/marki
 
 ```
 
