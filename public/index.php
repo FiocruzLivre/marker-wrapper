@@ -32,14 +32,14 @@ if (!str_starts_with($requestPath, '/v4/marker')) {
     return;
 }
 
-enum Type: string {
+enum Type: string
+{
     case PNG = 'png';
     case SVG = 'svg';
 }
 
 class Marker
 {
-
     private string $iconColor = '#fff';
     private bool $header = false;
     private Type $type = Type::PNG;
@@ -47,30 +47,34 @@ class Marker
         private string $size = 'm',
         private string $name = 'circle',
         private string $color = '#2b82cb',
-    )
-    {
+    ) {
     }
 
-    public function setSize(string $size): self {
+    public function setSize(string $size): self
+    {
         $this->size = $size;
         return $this;
     }
-    public function setName(string $name): self {
+    public function setName(string $name): self
+    {
         $this->name = $name;
         return $this;
     }
-    public function setColor(string $color): self {
+    public function setColor(string $color): self
+    {
         $this->color = $color;
         return $this;
     }
-    private function extractD(string $filePath) {
+    private function extractD(string $filePath)
+    {
         $xmlService = new Service();
         $xmlContent = file_get_contents($filePath);
         $parsed = $xmlService->parse($xmlContent);
         return $parsed[0]['attributes']['d'];
     }
 
-    private function colorIntencity($hex, $factor) {
+    private function colorIntencity($hex, $factor)
+    {
         $decimal = hexdec($hex);
         $new = round($decimal * $factor);
         if ($new > 255) {
@@ -104,8 +108,8 @@ class Marker
         $writer->startElement('svg');
         extract($this->getSize());
         if ($this->type === Type::SVG) {
-            $width *=10;
-            $height *=10;
+            $width *= 10;
+            $height *= 10;
         }
         $writer->writeAttributes([
             'width' => (string) $width,
@@ -154,7 +158,7 @@ class Marker
 
     private function getSize(): array
     {
-        switch($this->size) {
+        switch ($this->size) {
             case 's':
                 return [
                     'width' => 20,
@@ -186,7 +190,7 @@ class Marker
         $svg->setBackgroundColor(new ImagickPixel('transparent'));
         $svg->setResolution(300, 300);
         $svg->readImageBlob($svgContent);
-        $svg->resizeImage(round($width*1.3), round($height*1.3), Imagick::FILTER_LANCZOS, 1, true);
+        $svg->resizeImage(round($width * 1.3), round($height * 1.3), Imagick::FILTER_LANCZOS, 1, true);
 
         $image->compositeImage($svg, Imagick::COMPOSITE_OVER, -5, -3);
 
@@ -199,12 +203,14 @@ class Marker
         return $this;
     }
 
-    public function imageType(Type $type): self {
+    public function imageType(Type $type): self
+    {
         $this->type = $type;
         return $this;
     }
 
-    public function output(): mixed {
+    public function output(): mixed
+    {
         switch ($this->type) {
             case Type::SVG:
                 $output = $this->getSvg();
