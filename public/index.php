@@ -43,11 +43,18 @@ class Marker
     private string $iconColor = '#fff';
     private bool $header = false;
     private Type $type = Type::PNG;
+    private bool $cacheEnabled = false;
     public function __construct(
         private string $size = 'm',
         private string $name = 'circle',
         private string $color = '#2b82cb',
     ) {
+    }
+
+    public function enableCache(string $enable): self
+    {
+        $this->cacheEnabled = (bool) $enable;
+        return $this;
     }
 
     public function setSize(string $size): self
@@ -178,8 +185,19 @@ class Marker
         }
     }
 
+    private function cache(string $content): self
+    {
+        if ($this->cacheEnabled) {
+            file_put_contents('../cache/pin-' . $this->size . '-' . $this->name . '-' . $this->color . '.' . $this->type->value, $content);
+        }
+        return $this;
+    }
+
     public function getPng()
     {
+        if ($this->cacheEnabled && file_exists('../cache/pin-' . $this->size . '-' . $this->name . '-' . $this->color . '.' . $this->type->value)) {
+            return file_get_contents('../cache/pin-' . $this->size . '-' . $this->name . '-' . $this->color . '.' . $this->type->value);
+        }
         $svgContent = $this->getSvg();
         extract($this->getSize());
 
@@ -194,7 +212,9 @@ class Marker
 
         $image->compositeImage($svg, Imagick::COMPOSITE_OVER, -5, -3);
 
-        return $image->getImageBlob();
+        $content = $image->getImageBlob();
+        $this->cache($content);
+        return $content;
     }
 
     public function withHeader(): self
@@ -242,5 +262,6 @@ $marker
     ->setName($matches['name'])
     ->setColor($matches['color'])
     ->withHeader()
+    ->enableCache(getenv('ENABLE_CACHE'))
     ->imageType(Type::tryFrom($matches['format']))
     ->output();
