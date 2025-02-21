@@ -64,6 +64,9 @@ class Marker
     }
     public function setName(string $name): self
     {
+        if (!$name) {
+            $name = 'circle';
+        }
         $this->name = $name;
         return $this;
     }
