@@ -45,6 +45,11 @@ without publishing host ports.
   `/osm/5/13/19@1.3x.png` and `/v4/marker/pin-l+7e7e7e@2x.png`;
   verify decoded PNG dimensions, not only HTTP 200. The same base tile
   must be fetched at most once from the configured provider.
+- Mapbox marker images reserve 20x50, 30x70 and 35x90 pixels for
+  small, medium and large sizes respectively (double at `@2x`). The
+  visible pin occupies the upper half; the remainder stays transparent
+  for the anchor. Do not add an icon when none was requested. Marker
+  cache keys are versioned when rendered image geometry changes.
 - Persistent disk cache defaults: tiles 7 days, static maps 1 day,
   markers 30 days; TTLs can be overridden via Compose.
 - To prune expired cache entries without disrupting service:

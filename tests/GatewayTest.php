@@ -267,6 +267,48 @@ final class GatewayTest extends TestCase
         self::assertCount(1, $history, 'Repeated retina requests must come from the variant cache');
     }
 
+    public function testPlainPinsDoNotPretendToHaveAnIcon(): void
+    {
+        $gateway = $this->gateway();
+        foreach (['s' => [20, 50], 'm' => [30, 70], 'l' => [35, 90]] as $size => [$width, $height]) {
+            $url = '/v4/marker/pin-' . $size . '+2b82cb';
+            $svg = $gateway->handle($url . '.svg');
+            self::assertSame(200, $svg->status);
+            self::assertStringContainsString('width="' . $width . '" height="' . $height . '"', $svg->body);
+            self::assertSame(2, substr_count($svg->body, '<path '), 'Plain pin should have a body and border, not an icon');
+            self::assertStringNotContainsString('fill="#fff"', $svg->body);
+            self::assertStringContainsString('fill="#2b82cb"', $svg->body);
+            self::assertStringContainsString('viewBox="0 0 15 30"', $svg->body);
+            $png = $gateway->handle($url . '.png');
+            self::assertSame(200, $png->status);
+            $image = new Imagick();
+            $image->readImageBlob($png->body);
+            self::assertSame($width, $image->getImageWidth());
+            self::assertSame($height, $image->getImageHeight());
+            self::assertSame(0.0, $image->getImagePixelColor((int) ($width / 2), $height - 2)->getColor(1)['a']);
+            $image->clear();
+        }
+
+        $withSymbol = $gateway->handle('/v4/marker/pin-l-circle+2b82cb.svg');
+        self::assertSame(200, $withSymbol->status);
+        self::assertSame(3, substr_count($withSymbol->body, '<path '));
+        self::assertStringContainsString('fill="#fff"', $withSymbol->body);
+    }
+
+    public function testMarkerRendererDoesNotReuseLegacyIncompatibleCacheContent(): void
+    {
+        $cache = new DiskCache($this->cacheDir);
+        $path = '/v4/marker/pin-l+7e7e7e@2x.png';
+        $cache->write('marker:' . $path, 'incorrect-old-raster');
+        $gateway = $this->gateway();
+        $result = $gateway->handle($path);
+        self::assertSame(200, $result->status);
+        self::assertStringStartsWith("\x89PNG\r\n\x1a\n", $result->body);
+        self::assertSame('incorrect-old-raster', $cache->read('marker:' . $path, 2592000));
+        self::assertSame($result->body, $cache->read('marker:v2:' . $path, 2592000));
+        self::assertSame($result->body, $gateway->handle($path)->body);
+    }
+
     public function testHighDensityMarkerDimensionsAndUnknownScales(): void
     {
         $gateway = $this->gateway();
@@ -276,12 +318,13 @@ final class GatewayTest extends TestCase
         $image = new Imagick();
         $image->readImageBlob($png->body);
         self::assertSame(70, $image->getImageWidth());
-        self::assertSame(90, $image->getImageHeight());
+        self::assertSame(180, $image->getImageHeight());
+        self::assertSame(0.0, $image->getImagePixelColor(35, 160)->getColor(1)['a']);
         $image->clear();
 
         $svg = $gateway->handle('/v4/marker/pin-m+2b82cb@2x.svg');
         self::assertSame(200, $svg->status);
-        self::assertStringContainsString('width="60" height="70"', $svg->body);
+        self::assertStringContainsString('width="60" height="140"', $svg->body);
         self::assertSame(404, $gateway->handle('/v4/marker/pin-l+7e7e7e@4x.png')->status);
         self::assertSame(404, $gateway->handle('/v4/marker/pin-l-unknown+7e7e7e@2x.png')->status);
         self::assertSame(404, $gateway->handle('/osm/5/13/19@9x.png')->status);

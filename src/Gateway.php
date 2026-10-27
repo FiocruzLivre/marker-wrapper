@@ -44,10 +44,10 @@ final readonly class Gateway
         }
 
         if (preg_match('~^/v4/marker/pin-(?<size>[sml])(?:-(?<icon>[a-z][a-z0-9-]{0,40}))?\\+(?<color>[a-fA-F0-9]{3}|[a-fA-F0-9]{6})(?:@(?<scale>1\\.3|1\\.5|2|2\\.6|3)x)?\\.(?<format>png|svg)$~D', $path, $m)) {
-            $name = $m['icon'] ?: 'circle';
+            $name = $m['icon'] !== '' ? $m['icon'] : null;
             $format = $m['format'];
             $scale = isset($m['scale']) && $m['scale'] !== '' ? (float) $m['scale'] : 1.0;
-            $cacheKey = 'marker:' . $path;
+            $cacheKey = 'marker:v2:' . $path;
             $cached = $this->cache->read($cacheKey, $this->cachePolicy->markerTtl);
             if ($cached !== null) {
                 return $this->image(200, $cached, $format === 'svg' ? 'image/svg+xml' : 'image/png', $this->cachePolicy->markerTtl);
