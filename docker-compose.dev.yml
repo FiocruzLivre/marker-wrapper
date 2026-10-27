@@ -1,0 +1,5 @@
+# Opt-in local access only. Production publishes through its own reverse proxy.
+services:
+  nginx:
+    ports:
+      - "127.0.0.1:${MARKER_PORT:-18181}:8080"
