@@ -43,16 +43,17 @@ final readonly class Gateway
             return new HttpResponse(200, "ok\n", ['Content-Type' => 'text/plain; charset=utf-8']);
         }
 
-        if (preg_match('~^/v4/marker/pin-(?<size>[sml])(?:-(?<icon>[a-z][a-z0-9-]{0,40}))?\\+(?<color>[a-fA-F0-9]{3}|[a-fA-F0-9]{6})\\.(?<format>png|svg)$~D', $path, $m)) {
+        if (preg_match('~^/v4/marker/pin-(?<size>[sml])(?:-(?<icon>[a-z][a-z0-9-]{0,40}))?\\+(?<color>[a-fA-F0-9]{3}|[a-fA-F0-9]{6})(?:@(?<scale>1\\.3|1\\.5|2|2\\.6|3)x)?\\.(?<format>png|svg)$~D', $path, $m)) {
             $name = $m['icon'] ?: 'circle';
             $format = $m['format'];
+            $scale = isset($m['scale']) && $m['scale'] !== '' ? (float) $m['scale'] : 1.0;
             $cacheKey = 'marker:' . $path;
             $cached = $this->cache->read($cacheKey, $this->cachePolicy->markerTtl);
             if ($cached !== null) {
                 return $this->image(200, $cached, $format === 'svg' ? 'image/svg+xml' : 'image/png', $this->cachePolicy->markerTtl);
             }
             try {
-                $data = $this->markers->render($m['size'], $name, $m['color'], $format);
+                $data = $this->markers->render($m['size'], $name, $m['color'], $format, $scale);
             } catch (\OutOfBoundsException) {
                 return $this->error(404);
             } catch (\Throwable $e) {
@@ -63,8 +64,15 @@ final readonly class Gateway
             return $this->image(200, $data, $format === 'svg' ? 'image/svg+xml' : 'image/png', $this->cachePolicy->markerTtl);
         }
 
-        if (preg_match('~^/(?:osm/)?(?<z>[0-9]{1,2})/(?<x>[0-9]{1,7})/(?<y>[0-9]{1,7})\\.png$~D', $path, $m)) {
-            return $this->tile((int) $m['z'], (int) $m['x'], (int) $m['y']);
+        if (preg_match('~^/(?:(?:osm|osm-intl)/)?(?<z>[0-9]{1,2})/(?<x>[0-9]{1,7})/(?<y>[0-9]{1,7})(?:@(?<scale>1\\.3|1\\.5|2|2\\.6|3)x)?\\.png$~D', $path, $m)) {
+            $zoom = (int) $m['z'];
+            $x = (int) $m['x'];
+            $y = (int) $m['y'];
+            if (!isset($m['scale']) || $m['scale'] === '') {
+                return $this->tile($zoom, $x, $y);
+            }
+
+            return $this->scaledTile($zoom, $x, $y, (float) $m['scale'], $m['scale']);
         }
 
         if (preg_match('~^/img/(?<style>osm|osm-intl)?,(?<z>[0-9]{1,2}),(?<lat>-?[0-9]{1,3}(?:\\.[0-9]+)?),(?<lon>-?[0-9]{1,3}(?:\\.[0-9]+)?),(?<w>[0-9]{1,4})x(?<h>[0-9]{1,4})(?:@(?<scale>1\\.3|1\\.5|2|2\\.6|3)x)?\\.png$~D', $path, $m)) {
@@ -96,6 +104,38 @@ final readonly class Gateway
 
         // Never operate as an open proxy for caller-chosen paths or hosts.
         return $this->error(404);
+    }
+
+    /**
+     * Generate a display-resolution variant from the cached base tile.
+     * Keep a distinct cache key for each scale and never query scaled
+     * paths on the configured upstream tile server.
+     */
+    private function scaledTile(int $z, int $x, int $y, float $scale, string $scaleLabel): HttpResponse
+    {
+        if ($z < 0 || $z > 19 || $x < 0 || $y < 0 || $x >= 2 ** $z || $y >= 2 ** $z) {
+            return $this->error(400);
+        }
+
+        $key = "tile:$z/$x/$y@$scaleLabel";
+        $cached = $this->cache->read($key, $this->cachePolicy->tileTtl);
+        if ($cached !== null) {
+            return $this->image(200, $cached, 'image/png', $this->cachePolicy->tileTtl);
+        }
+
+        $original = $this->tile($z, $x, $y);
+        if ($original->status !== 200) {
+            return $original;
+        }
+        try {
+            $scaled = (new RasterScaler())->scalePng($original->body, $scale);
+        } catch (\Throwable $e) {
+            error_log('MarkerWrapper tile scaling error: ' . get_class($e));
+            return $this->error(502);
+        }
+        $this->cache->write($key, $scaled);
+
+        return $this->image(200, $scaled, 'image/png', $this->cachePolicy->tileTtl);
     }
 
     public function tile(int $z, int $x, int $y): HttpResponse

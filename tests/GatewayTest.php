@@ -237,4 +237,61 @@ final class GatewayTest extends TestCase
             }
         }
     }
+
+    public function testHighDensityTilesHaveCorrectDimensionsAndShareUpstreamCache(): void
+    {
+        $history = [];
+        $gateway = $this->gateway(
+            [new Response(200, ['Content-Type' => 'image/png'], $this->png())],
+            $history,
+        );
+
+        foreach (['/osm/5/13/19@1.3x.png?lang=pt-br' => 333,
+                  '/osm-intl/5/13/19@2x.png' => 512,
+                  '/5/13/19@3x.png' => 768,
+                  '/5/13/19.png' => 256] as $url => $size) {
+            $response = $gateway->handle($url);
+            self::assertSame(200, $response->status, $url);
+            self::assertSame('image/png', $response->headers['Content-Type']);
+            self::assertStringStartsWith("\x89PNG\r\n\x1a\n", $response->body);
+            $image = new Imagick();
+            $image->readImageBlob($response->body);
+            self::assertSame($size, $image->getImageWidth(), $url);
+            self::assertSame($size, $image->getImageHeight(), $url);
+            $image->clear();
+        }
+
+        self::assertCount(1, $history, 'High-DPI variants must use the single cached base tile');
+        self::assertSame('https://tiles.example.invalid/5/13/19.png', (string) $history[0]['request']->getUri());
+        self::assertSame(200, $gateway->handle('/osm/5/13/19@1.3x.png')->status);
+        self::assertCount(1, $history, 'Repeated retina requests must come from the variant cache');
+    }
+
+    public function testHighDensityMarkerDimensionsAndUnknownScales(): void
+    {
+        $gateway = $this->gateway();
+        $png = $gateway->handle('/v4/marker/pin-l+7e7e7e@2x.png');
+        self::assertSame(200, $png->status);
+        self::assertSame('image/png', $png->headers['Content-Type']);
+        $image = new Imagick();
+        $image->readImageBlob($png->body);
+        self::assertSame(70, $image->getImageWidth());
+        self::assertSame(90, $image->getImageHeight());
+        $image->clear();
+
+        $svg = $gateway->handle('/v4/marker/pin-m+2b82cb@2x.svg');
+        self::assertSame(200, $svg->status);
+        self::assertStringContainsString('width="60" height="70"', $svg->body);
+        self::assertSame(404, $gateway->handle('/v4/marker/pin-l+7e7e7e@4x.png')->status);
+        self::assertSame(404, $gateway->handle('/v4/marker/pin-l-unknown+7e7e7e@2x.png')->status);
+        self::assertSame(404, $gateway->handle('/osm/5/13/19@9x.png')->status);
+    }
+
+    public function testFailedUpstreamResponseIsNotTransformedIntoAHighDensityImage(): void
+    {
+        $gateway = $this->gateway([new Response(429, [], 'rate-limited')]);
+        $response = $gateway->handle('/osm/5/13/19@1.3x.png');
+        self::assertSame(429, $response->status);
+        self::assertSame('no-store', $response->headers['Cache-Control']);
+    }
 }

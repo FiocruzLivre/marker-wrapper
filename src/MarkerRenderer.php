@@ -16,12 +16,13 @@ final readonly class MarkerRenderer
     {
     }
 
-    public function render(string $size, string $name, string $color, string $format): string
+    public function render(string $size, string $name, string $color, string $format, float $scale = 1.0): string
     {
         if (!in_array($size, ['s', 'm', 'l'], true)
             || !preg_match('/^[a-z][a-z0-9-]{0,40}$/D', $name)
             || !preg_match('/^(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/D', $color)
-            || !in_array($format, ['png', 'svg'], true)) {
+            || !in_array($format, ['png', 'svg'], true)
+            || !in_array($scale, [1.0, 1.3, 1.5, 2.0, 2.6, 3.0], true)) {
             throw new \InvalidArgumentException('Invalid marker');
         }
 
@@ -42,6 +43,8 @@ final readonly class MarkerRenderer
             'm' => [30, 35],
             'l' => [35, 45],
         };
+        $width = (int) round((float) $width * $scale);
+        $height = (int) round((float) $height * $scale);
         $svg = sprintf(
             '<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="0 0 15 15"><path d="%s" fill="#%s"/><path d="%s" fill="#%s"/><path d="%s" fill="#fff" transform="translate(4.6 2.7) scale(0.4)"/></svg>',
             $width,
