@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace FiocruzLivre\MarkerWrapper;
@@ -8,8 +9,6 @@ use GuzzleHttp\Exception\GuzzleException;
 
 final readonly class Gateway
 {
-    public const TILE_TTL = 604800; // OSM tile policy: no fewer than seven days without upstream expiry metadata.
-
     public function __construct(
         private ClientInterface $client,
         private DiskCache $cache,
@@ -17,7 +16,8 @@ final readonly class Gateway
         private StaticMapRenderer $maps,
         private string $tileServer,
         private string $userAgent,
-        private string $referer,
+        private string $referer = '',
+        private CachePolicy $cachePolicy = new CachePolicy(),
     ) {
         $parts = parse_url($tileServer);
         if (!is_array($parts)
@@ -28,7 +28,7 @@ final readonly class Gateway
             || isset($parts['query'])
             || isset($parts['fragment'])
             || trim($userAgent) === ''
-            || !str_starts_with($referer, 'https://')) {
+            || ($referer !== '' && !str_starts_with($referer, 'https://'))) {
             throw new \InvalidArgumentException('Invalid tile provider configuration');
         }
     }
@@ -47,9 +47,9 @@ final readonly class Gateway
             $name = $m['icon'] ?: 'circle';
             $format = $m['format'];
             $cacheKey = 'marker:' . $path;
-            $cached = $this->cache->read($cacheKey, 2592000);
+            $cached = $this->cache->read($cacheKey, $this->cachePolicy->markerTtl);
             if ($cached !== null) {
-                return $this->image(200, $cached, $format === 'svg' ? 'image/svg+xml' : 'image/png', 604800);
+                return $this->image(200, $cached, $format === 'svg' ? 'image/svg+xml' : 'image/png', $this->cachePolicy->markerTtl);
             }
             try {
                 $data = $this->markers->render($m['size'], $name, $m['color'], $format);
@@ -60,7 +60,7 @@ final readonly class Gateway
                 return $this->error(500);
             }
             $this->cache->write($cacheKey, $data);
-            return $this->image(200, $data, $format === 'svg' ? 'image/svg+xml' : 'image/png', 604800);
+            return $this->image(200, $data, $format === 'svg' ? 'image/svg+xml' : 'image/png', $this->cachePolicy->markerTtl);
         }
 
         if (preg_match('~^/(?:osm/)?(?<z>[0-9]{1,2})/(?<x>[0-9]{1,7})/(?<y>[0-9]{1,7})\\.png$~D', $path, $m)) {
@@ -69,9 +69,9 @@ final readonly class Gateway
 
         if (preg_match('~^/img/(?<style>osm|osm-intl)?,(?<z>[0-9]{1,2}),(?<lat>-?[0-9]{1,3}(?:\\.[0-9]+)?),(?<lon>-?[0-9]{1,3}(?:\\.[0-9]+)?),(?<w>[0-9]{1,4})x(?<h>[0-9]{1,4})(?:@(?<scale>1\\.3|1\\.5|2|2\\.6|3)x)?\\.png$~D', $path, $m)) {
             $key = 'static:' . $path;
-            $cached = $this->cache->read($key, 86400);
+            $cached = $this->cache->read($key, $this->cachePolicy->staticTtl);
             if ($cached !== null) {
-                return $this->image(200, $cached, 'image/png', 86400);
+                return $this->image(200, $cached, 'image/png', $this->cachePolicy->staticTtl);
             }
             try {
                 $scale = isset($m['scale']) && $m['scale'] !== '' ? (float) $m['scale'] : 1.0;
@@ -81,7 +81,7 @@ final readonly class Gateway
                     (float) $m['lon'],
                     (int) $m['w'],
                     (int) $m['h'],
-                    fn(int $z, int $x, int $y): HttpResponse => $this->tile($z, $x, $y),
+                    fn (int $z, int $x, int $y): HttpResponse => $this->tile($z, $x, $y),
                     $scale,
                 );
             } catch (\InvalidArgumentException) {
@@ -91,7 +91,7 @@ final readonly class Gateway
                 return $this->error(502);
             }
             $this->cache->write($key, $result);
-            return $this->image(200, $result, 'image/png', 86400);
+            return $this->image(200, $result, 'image/png', $this->cachePolicy->staticTtl);
         }
 
         // Never operate as an open proxy for caller-chosen paths or hosts.
@@ -104,12 +104,19 @@ final readonly class Gateway
             return $this->error(400);
         }
         $key = "tile:$z/$x/$y";
-        $cached = $this->cache->read($key, self::TILE_TTL);
+        $cached = $this->cache->read($key, $this->cachePolicy->tileTtl);
         if ($cached !== null) {
-            return $this->image(200, $cached, 'image/png', self::TILE_TTL);
+            return $this->image(200, $cached, 'image/png', $this->cachePolicy->tileTtl);
         }
 
         try {
+            $headers = [
+                'User-Agent' => $this->userAgent,
+                'Accept' => 'image/png',
+            ];
+            if ($this->referer !== '') {
+                $headers['Referer'] = $this->referer;
+            }
             $upstream = $this->client->request(
                 'GET',
                 rtrim($this->tileServer, '/') . "/$z/$x/$y.png",
@@ -118,11 +125,7 @@ final readonly class Gateway
                     'http_errors' => false,
                     'timeout' => 12,
                     'connect_timeout' => 4,
-                    'headers' => [
-                        'User-Agent' => $this->userAgent,
-                        'Referer' => $this->referer,
-                        'Accept' => 'image/png',
-                    ],
+                    'headers' => $headers,
                 ],
             );
         } catch (GuzzleException $e) {
@@ -138,7 +141,7 @@ final readonly class Gateway
             return $this->error(502);
         }
         $this->cache->write($key, $data);
-        return $this->image(200, $data, 'image/png', self::TILE_TTL);
+        return $this->image(200, $data, 'image/png', $this->cachePolicy->tileTtl);
     }
 
     private function image(int $status, string $body, string $type, int $ttl): HttpResponse
@@ -146,7 +149,7 @@ final readonly class Gateway
         return new HttpResponse($status, $body, [
             'Content-Type' => $type,
             'Cache-Control' => 'public, max-age=' . $ttl,
-            'X-Content-Type-Options' => 'nosniff',
+            'Access-Control-Allow-Origin' => '*',
         ]);
     }
 
@@ -155,7 +158,7 @@ final readonly class Gateway
         return new HttpResponse($status, "Resource unavailable\n", [
             'Content-Type' => 'text/plain; charset=utf-8',
             'Cache-Control' => 'no-store',
-            'X-Content-Type-Options' => 'nosniff',
+            'Access-Control-Allow-Origin' => '*',
         ]);
     }
 }

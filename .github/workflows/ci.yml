@@ -1,52 +1,75 @@
 name: Validate marker gateway
+
 on:
   push:
     branches: [main]
   pull_request:
+
 permissions:
   contents: read
+
+env:
+  # Reserved example values; CI never depends on a project-specific origin.
+  TILE_SERVER: https://tiles.example.org
+  MARKER_USER_AGENT: MarkerWrapperCI/1.0 (+https://example.org/contact)
+  MARKER_REFERER: https://example.org/
+
 jobs:
   php:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout with pinned Maki icons
+      - name: Checkout pinned icon assets
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
-      - name: Setup PHP with runtime extensions
+      - name: Configure PHP and extensions
         uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2.40.0
         with:
           php-version: '8.5'
           extensions: imagick, dom
           tools: composer:2.10.3
           coverage: none
-      - name: Check locked dependencies and security
+      - name: Resolve locked runtime and isolated tooling
         run: |
           composer validate --strict
           composer install --no-interaction --prefer-dist --no-progress
-          composer audit --locked --no-dev --no-interaction
-      - name: Test PHP and service behavior
+          composer run tools:install
+          composer run security:check
+          for dir in vendor-bin/phpunit vendor-bin/psalm vendor-bin/coding-standard; do
+            composer --working-dir="$dir" validate --no-check-publish
+            composer --working-dir="$dir" audit --locked --no-interaction
+          done
+      - name: PHP lint, unit tests, coding standard, and Psalm
         run: |
           composer run lint
           composer run test
+          composer run cs:check
+          composer run psalm
+
   image:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
-      - name: Validate Compose and build immutable runtime
+      - name: Validate Compose and build PHP-FPM image
         run: |
           docker compose config --quiet
           docker compose build marker
-      - name: Smoke test HTTP routes
+      - name: Test internal HTTP gateway (no published port)
         run: |
           docker compose up -d
           trap 'docker compose down --volumes' EXIT
           for attempt in $(seq 1 40); do
-            if curl -fsS http://127.0.0.1:18181/healthz; then break; fi
+            if docker compose exec -T nginx wget -qO- http://127.0.0.1:8080/healthz | grep -q ok; then
+              break
+            fi
             sleep 2
           done
-          curl --fail --silent --show-error --output /tmp/pin.png http://127.0.0.1:18181/v4/marker/pin-m+2b82cb.png
+          docker compose exec -T nginx wget -qO- http://127.0.0.1:8080/healthz | grep -q ok
+          docker compose exec -T nginx wget -qO- http://127.0.0.1:8080/v4/marker/pin-m+2b82cb.png > /tmp/pin.png
           file /tmp/pin.png | grep -q 'PNG image data'
-          test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:18181/not-a-tile)" = '404'
+          if docker compose exec -T nginx wget -qO- http://127.0.0.1:8080/not-a-tile > /tmp/invalid.body; then
+            echo 'Unknown route must not succeed' >&2
+            exit 1
+          fi

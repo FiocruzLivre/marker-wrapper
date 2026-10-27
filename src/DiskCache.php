@@ -1,16 +1,23 @@
 <?php
+
 declare(strict_types=1);
 
 namespace FiocruzLivre\MarkerWrapper;
 
 final readonly class DiskCache
 {
-    public function __construct(private string $directory) {}
+    public function __construct(private string $directory)
+    {
+    }
 
     public function read(string $key, int $maxAgeSeconds): ?string
     {
         $path = $this->path($key);
-        if (!is_file($path) || time() - (filemtime($path) ?: 0) >= $maxAgeSeconds) {
+        if (!is_file($path)) {
+            return null;
+        }
+        $modifiedAt = @filemtime($path);
+        if ($modifiedAt === false || time() - $modifiedAt >= $maxAgeSeconds) {
             return null;
         }
         $value = @file_get_contents($path);
@@ -40,6 +47,41 @@ final readonly class DiskCache
                 @unlink($temporary);
             }
         }
+    }
+
+    /**
+     * Maintenance-only cleanup, never invoked while serving HTTP requests.
+     */
+    public function pruneExpired(int $retentionSeconds): int
+    {
+        if ($retentionSeconds < 60) {
+            throw new \InvalidArgumentException('Invalid cache retention');
+        }
+
+        if (!is_dir($this->directory)) {
+            return 0;
+        }
+
+        $deleted = 0;
+        $expiry = time() - $retentionSeconds;
+        foreach (new \DirectoryIterator($this->directory) as $prefix) {
+            if ($prefix->isDot() || $prefix->isLink() || !$prefix->isDir()) {
+                continue;
+            }
+
+            foreach (new \DirectoryIterator($prefix->getPathname()) as $entry) {
+                if ($entry->isFile()
+                    && !$entry->isLink()
+                    && $entry->getExtension() === 'bin'
+                    && $entry->getMTime() <= $expiry
+                    && @unlink($entry->getPathname())
+                ) {
+                    $deleted++;
+                }
+            }
+        }
+
+        return $deleted;
     }
 
     private function path(string $key): string

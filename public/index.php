@@ -1,6 +1,8 @@
 <?php
+
 declare(strict_types=1);
 
+use FiocruzLivre\MarkerWrapper\CachePolicy;
 use FiocruzLivre\MarkerWrapper\DiskCache;
 use FiocruzLivre\MarkerWrapper\Gateway;
 use FiocruzLivre\MarkerWrapper\MarkerRenderer;
@@ -9,15 +11,22 @@ use GuzzleHttp\Client;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
+/** Read optional environment values without truthiness ambiguity. */
+$environmentValue = static function (string $name, string $fallback = ''): string {
+    $value = getenv($name);
+    return $value === false || $value === '' ? $fallback : $value;
+};
+
 try {
     $application = new Gateway(
         new Client(),
-        new DiskCache(getenv('CACHE_DIR') ?: dirname(__DIR__) . '/cache'),
+        new DiskCache($environmentValue('CACHE_DIR', dirname(__DIR__) . '/cache')),
         new MarkerRenderer(dirname(__DIR__) . '/icons/maki/icons'),
         new StaticMapRenderer(),
-        getenv('TILE_SERVER') ?: 'https://tile.openstreetmap.org',
-        getenv('MARKER_USER_AGENT') ?: 'MapaMoveSaude-MarkerWrapper/2.0 (+https://mapamovsaude.net.br/)',
-        getenv('MARKER_REFERER') ?: 'https://mapamovsaude.net.br/',
+        $environmentValue('TILE_SERVER'),
+        $environmentValue('MARKER_USER_AGENT'),
+        $environmentValue('MARKER_REFERER'),
+        CachePolicy::fromEnvironment(),
     );
     $response = $application->handle($_SERVER['REQUEST_URI'] ?? '/');
     http_response_code($response->status);

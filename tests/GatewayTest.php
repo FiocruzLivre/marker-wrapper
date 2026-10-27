@@ -1,8 +1,10 @@
 <?php
+
 declare(strict_types=1);
 
 namespace FiocruzLivre\MarkerWrapper\Tests;
 
+use FiocruzLivre\MarkerWrapper\CachePolicy;
 use FiocruzLivre\MarkerWrapper\DiskCache;
 use FiocruzLivre\MarkerWrapper\Gateway;
 use FiocruzLivre\MarkerWrapper\MarkerRenderer;
@@ -40,8 +42,12 @@ final class GatewayTest extends TestCase
     }
 
     /** @param list<Response> $upstream */
-    private function gateway(array $upstream = [], ?array &$history = null): Gateway
-    {
+    private function gateway(
+        array $upstream = [],
+        ?array &$history = null,
+        ?CachePolicy $policy = null,
+        string $referer = 'https://example.org/',
+    ): Gateway {
         $handler = HandlerStack::create(new MockHandler($upstream));
         $history = [];
         $handler->push(Middleware::history($history));
@@ -51,8 +57,9 @@ final class GatewayTest extends TestCase
             new MarkerRenderer(dirname(__DIR__) . '/icons/maki/icons'),
             new StaticMapRenderer(),
             'https://tiles.example.invalid',
-            'MapaMoveSaude-MarkerWrapper/2.0 (+https://mapamovsaude.net.br/)',
-            'https://mapamovsaude.net.br/',
+            'MarkerWrapperTest/2.0 (+https://example.org/contact)',
+            $referer,
+            $policy ?? new CachePolicy(),
         );
     }
 
@@ -96,8 +103,8 @@ final class GatewayTest extends TestCase
         self::assertSame(200, $gateway->handle('/0/0/0.png')->status);
         self::assertCount(1, $history);
         self::assertSame('https://tiles.example.invalid/0/0/0.png', (string) $history[0]['request']->getUri());
-        self::assertStringContainsString('MapaMoveSaude-MarkerWrapper', $history[0]['request']->getHeaderLine('User-Agent'));
-        self::assertSame('https://mapamovsaude.net.br/', $history[0]['request']->getHeaderLine('Referer'));
+        self::assertStringContainsString('MarkerWrapperTest', $history[0]['request']->getHeaderLine('User-Agent'));
+        self::assertSame('https://example.org/', $history[0]['request']->getHeaderLine('Referer'));
     }
 
     public function testProviderDenialsAreNotMaskedAsSuccess(): void
@@ -149,7 +156,85 @@ final class GatewayTest extends TestCase
             new StaticMapRenderer(),
             'http://127.0.0.1/internal',
             'valid-agent',
-            'https://mapamovsaude.net.br/',
+            'https://example.org/',
         );
+    }
+
+
+    public function testOperatorConfiguredCacheDurationsApplyToResponses(): void
+    {
+        $policy = new CachePolicy(604800, 1200, 3600);
+        $history = [];
+        $gateway = $this->gateway(
+            [new Response(200, ['Content-Type' => 'image/png'], $this->png())],
+            $history,
+            $policy,
+        );
+
+        $tile = $gateway->handle('/0/0/0.png');
+        self::assertSame('public, max-age=604800', $tile->headers['Cache-Control']);
+        $marker = $gateway->handle('/v4/marker/pin-m+2b82cb.png');
+        self::assertSame('public, max-age=3600', $marker->headers['Cache-Control']);
+        $static = $gateway->handle('/img/,0,0,0,180x180.png');
+        self::assertSame('public, max-age=1200', $static->headers['Cache-Control']);
+        self::assertCount(1, $history, 'Static map must reuse a cached tile');
+    }
+
+    public function testOptionalRefererIsNotInvented(): void
+    {
+        $history = [];
+        $gateway = $this->gateway(
+            [new Response(200, ['Content-Type' => 'image/png'], $this->png())],
+            $history,
+            null,
+            '',
+        );
+        self::assertSame(200, $gateway->handle('/0/0/0.png')->status);
+        self::assertSame('', $history[0]['request']->getHeaderLine('Referer'));
+    }
+
+    public function testCachePolicyRejectsInvalidLifetime(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        new CachePolicy(59);
+    }
+
+    public function testCacheIsPersistedAndExpiresByConfiguredLifetime(): void
+    {
+        $cache = new DiskCache($this->cacheDir);
+        $cache->write('example-key', 'cached-response');
+        self::assertSame('cached-response', $cache->read('example-key', 3600));
+        self::assertNull($cache->read('example-key', 0));
+    }
+
+    public function testExplicitPruneKeepsFreshCacheAndDeletesExpiredCache(): void
+    {
+        $cache = new DiskCache($this->cacheDir);
+        $cache->write('old-entry', 'expired');
+        $cache->write('new-entry', 'current');
+        $hash = hash('sha256', 'old-entry');
+        $expired = $this->cacheDir . '/' . substr($hash, 0, 2) . '/' . $hash . '.bin';
+        self::assertTrue(touch($expired, time() - 86401));
+        clearstatcache(true, $expired);
+
+        self::assertSame(1, $cache->pruneExpired(86400));
+        self::assertNull($cache->read('old-entry', 86400));
+        self::assertSame('current', $cache->read('new-entry', 86400));
+    }
+
+    public function testInvalidEnvironmentCacheLifetimeIsRejected(): void
+    {
+        $previous = getenv('TILE_CACHE_TTL');
+        try {
+            putenv('TILE_CACHE_TTL=not-an-integer');
+            $this->expectException(\InvalidArgumentException::class);
+            CachePolicy::fromEnvironment();
+        } finally {
+            if ($previous === false) {
+                putenv('TILE_CACHE_TTL');
+            } else {
+                putenv('TILE_CACHE_TTL=' . $previous);
+            }
+        }
     }
 }

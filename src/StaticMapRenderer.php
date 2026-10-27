@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace FiocruzLivre\MarkerWrapper;
@@ -29,22 +30,22 @@ final class StaticMapRenderer
             || $width < 1 || $height < 1 || $width > 1200 || $height > 1200
             || $width * $height > 1500000
             || !in_array($scale, [1.0, 1.3, 1.5, 2.0, 2.6, 3.0], true)
-            || $width * $height * $scale * $scale > 6000000
+            || (float) ($width * $height) * $scale * $scale > 6000000.0
         ) {
             throw new \InvalidArgumentException('Unsupported map extent');
         }
         $tilesInWorld = 1 << $zoom;
-        $size = $tilesInWorld * 256;
+        $size = (float) ($tilesInWorld * 256);
         $sin = sin(deg2rad($lat));
-        $centerX = ($lon + 180) / 360 * $size;
-        $centerY = (0.5 - log((1 + $sin) / (1 - $sin)) / (4 * M_PI)) * $size;
-        $left = $centerX - $width / 2;
-        $top = $centerY - $height / 2;
+        $centerX = ($lon + 180.0) / 360.0 * $size;
+        $centerY = (0.5 - log((1.0 + $sin) / (1.0 - $sin)) / (4.0 * M_PI)) * $size;
+        $left = $centerX - (float) $width / 2.0;
+        $top = $centerY - (float) $height / 2.0;
 
-        $minX = (int) floor($left / 256);
-        $maxX = (int) floor(($left + $width - 1) / 256);
-        $minY = (int) floor($top / 256);
-        $maxY = (int) floor(($top + $height - 1) / 256);
+        $minX = (int) floor($left / 256.0);
+        $maxX = (int) floor(($left + (float) $width - 1.0) / 256.0);
+        $minY = (int) floor($top / 256.0);
+        $maxY = (int) floor(($top + (float) $height - 1.0) / 256.0);
         if (($maxX - $minX + 1) * ($maxY - $minY + 1) > 48) {
             throw new \InvalidArgumentException('Too many tiles');
         }
@@ -67,14 +68,14 @@ final class StaticMapRenderer
                 $image->compositeImage(
                     $piece,
                     Imagick::COMPOSITE_OVER,
-                    (int) round($tx * 256 - $left),
-                    (int) round($ty * 256 - $top),
+                    (int) round((float) ($tx * 256) - $left),
+                    (int) round((float) ($ty * 256) - $top),
                 );
                 $piece->clear();
             }
         }
         if ($scale !== 1.0) {
-            $image->resizeImage((int) round($width * $scale), (int) round($height * $scale), Imagick::FILTER_LANCZOS, 1);
+            $image->resizeImage((int) round((float) $width * $scale), (int) round((float) $height * $scale), Imagick::FILTER_LANCZOS, 1);
         }
         $image->setImageFormat('png');
         $blob = $image->getImagesBlob();

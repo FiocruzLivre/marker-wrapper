@@ -6,5 +6,6 @@ vendor-bin/**/vendor/
 /compose.homolog.override.yaml
 .env
 .env.*
+!.env.example
 composer.phar
 /.phpunit.cache/

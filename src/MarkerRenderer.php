@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace FiocruzLivre\MarkerWrapper;
@@ -11,7 +12,9 @@ use RuntimeException;
 
 final readonly class MarkerRenderer
 {
-    public function __construct(private string $iconsDirectory) {}
+    public function __construct(private string $iconsDirectory)
+    {
+    }
 
     public function render(string $size, string $name, string $color, string $format): string
     {
@@ -32,7 +35,7 @@ final readonly class MarkerRenderer
         }
         $outline = '';
         foreach (str_split($color, 2) as $part) {
-            $outline .= str_pad(dechex(min(255, (int)round(hexdec($part) * 1.6))), 2, '0', STR_PAD_LEFT);
+            $outline .= str_pad(dechex(min(255, (int)round((float) hexdec($part) * 1.6))), 2, '0', STR_PAD_LEFT);
         }
         [$width, $height] = match ($size) {
             's' => [20, 25],
@@ -41,8 +44,12 @@ final readonly class MarkerRenderer
         };
         $svg = sprintf(
             '<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="0 0 15 15"><path d="%s" fill="#%s"/><path d="%s" fill="#%s"/><path d="%s" fill="#fff" transform="translate(4.6 2.7) scale(0.4)"/></svg>',
-            $width, $height, htmlspecialchars($marker, ENT_QUOTES | ENT_XML1), $color,
-            htmlspecialchars($border, ENT_QUOTES | ENT_XML1), $outline,
+            $width,
+            $height,
+            htmlspecialchars($marker, ENT_QUOTES | ENT_XML1),
+            $color,
+            htmlspecialchars($border, ENT_QUOTES | ENT_XML1),
+            $outline,
             htmlspecialchars($icon, ENT_QUOTES | ENT_XML1),
         );
         if ($format === 'svg') {
@@ -74,8 +81,12 @@ final readonly class MarkerRenderer
         if ($nodes === false || $nodes->length < 1) {
             throw new RuntimeException('Icon SVG missing path');
         }
-        $d = $nodes->item(0)?->attributes?->getNamedItem('d')?->nodeValue;
-        if ($d === null || $d === '') {
+        $node = $nodes->item(0);
+        if (!$node instanceof \DOMElement) {
+            throw new RuntimeException('Icon SVG missing path element');
+        }
+        $d = $node->getAttribute('d');
+        if ($d === '') {
             throw new RuntimeException('Icon SVG missing path data');
         }
         return $d;
