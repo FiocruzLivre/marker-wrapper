@@ -1,6 +1,7 @@
 version: 2
 
 updates:
+  # Runtime dependencies and isolated developer tools.
   - package-ecosystem: composer
     directory: /
     schedule:
@@ -18,14 +19,25 @@ updates:
     directory: /vendor-bin/coding-standard
     schedule:
       interval: weekly
-  - package-ecosystem: docker
-    directory: /
-    schedule:
-      interval: weekly
+
+  # PHP base image defined in the nested Dockerfile.
   - package-ecosystem: docker
     directory: /.docker/php
     schedule:
       interval: weekly
+
+  # Nginx image used by the root Compose file.
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+
+  # Maki SVG icons are tracked as a Git submodule.
+  - package-ecosystem: gitsubmodule
+    directory: /
+    schedule:
+      interval: weekly
+
   - package-ecosystem: github-actions
     directory: /
     schedule:

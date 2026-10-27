@@ -18,12 +18,19 @@ services:
     tmpfs:
       - /tmp:mode=1777,size=32m
     environment:
+      # Required: HTTPS URL of an authorized XYZ tile provider.
       TILE_SERVER: ${TILE_SERVER:?Set an approved HTTPS XYZ tile origin}
+      # Required: identify the service and supply an operator contact.
       MARKER_USER_AGENT: ${MARKER_USER_AGENT:?Set an identifiable user agent with contact information}
+      # Optional: HTTPS Referer if required by the tile provider.
       MARKER_REFERER: ${MARKER_REFERER:-}
+      # Internal persistent volume path; normally leave unchanged.
       CACHE_DIR: /app/cache
+      # Tile lifetime in seconds (default: 7 days).
       TILE_CACHE_TTL: ${TILE_CACHE_TTL:-604800}
+      # Static map lifetime in seconds (default: 1 day).
       STATIC_CACHE_TTL: ${STATIC_CACHE_TTL:-86400}
+      # Generated marker lifetime in seconds (default: 30 days).
       MARKER_CACHE_TTL: ${MARKER_CACHE_TTL:-2592000}
     volumes:
       - tile-cache:/app/cache
