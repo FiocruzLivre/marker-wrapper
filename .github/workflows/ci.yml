@@ -69,6 +69,8 @@ jobs:
           docker compose exec -T nginx wget -qO- http://127.0.0.1:8080/healthz | grep -q ok
           docker compose exec -T nginx wget -qO- http://127.0.0.1:8080/v4/marker/pin-m+2b82cb.png > /tmp/pin.png
           file /tmp/pin.png | grep -q 'PNG image data'
+          docker compose exec -T nginx wget -qO- 'http://127.0.0.1:8080/v4/marker/pin-l+7e7e7e@2x.png' > /tmp/pin-retina.png
+          file /tmp/pin-retina.png | grep -q '70 x 90'
           if docker compose exec -T nginx wget -qO- http://127.0.0.1:8080/not-a-tile > /tmp/invalid.body; then
             echo 'Unknown route must not succeed' >&2
             exit 1

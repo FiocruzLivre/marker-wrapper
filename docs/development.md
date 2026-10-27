@@ -41,6 +41,10 @@ without publishing host ports.
   `/v4/marker/pin-m+2b82cb.png`; check PNG signature and MIME.
 - Test invalid paths and malformed input; only permitted routes and the
   configured upstream host may be used.
+- Test high-density screen requests such as
+  `/osm/5/13/19@1.3x.png` and `/v4/marker/pin-l+7e7e7e@2x.png`;
+  verify decoded PNG dimensions, not only HTTP 200. The same base tile
+  must be fetched at most once from the configured provider.
 - Persistent disk cache defaults: tiles 7 days, static maps 1 day,
   markers 30 days; TTLs can be overridden via Compose.
 - To prune expired cache entries without disrupting service:
