@@ -1,6 +1,10 @@
-.vscode
-/vendor/
-/vendor-bin/**/vendor/
-/.php-cs-fixer.cache
-icons
+.vscode/
+vendor/
+vendor-bin/**/vendor/
+.php-cs-fixer.cache
 /cache/
+/compose.homolog.override.yaml
+.env
+.env.*
+composer.phar
+/.phpunit.cache/

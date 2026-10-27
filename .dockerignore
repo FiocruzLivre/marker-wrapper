@@ -1,0 +1,14 @@
+.git
+.github
+.gitmodules
+cache
+vendor
+vendor-bin
+tests
+README.md
+phpunit.xml
+.env
+.env.*
+composer.phar
+.docker/nginx
+!icons/maki/icons

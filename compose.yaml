@@ -1,0 +1,44 @@
+services:
+  marker:
+    build:
+      context: .
+      dockerfile: .docker/php/Dockerfile
+    restart: unless-stopped
+    mem_limit: 320m
+    pids_limit: 64
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777,size=32m
+    environment:
+      TILE_SERVER: ${TILE_SERVER:-https://tile.openstreetmap.org}
+      MARKER_USER_AGENT: ${MARKER_USER_AGENT:-MapaMoveSaude-MarkerWrapper/2.0 (+https://mapamovsaude.net.br/)}
+      MARKER_REFERER: ${MARKER_REFERER:-https://mapamovsaude.net.br/}
+      CACHE_DIR: /app/cache
+    volumes:
+      - tile-cache:/app/cache
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+  nginx:
+    image: nginxinc/nginx-unprivileged:1.30.0-alpine
+    restart: unless-stopped
+    mem_limit: 64m
+    pids_limit: 64
+    depends_on:
+      - marker
+    ports:
+      - "127.0.0.1:${MARKER_PORT:-18181}:8080"
+    volumes:
+      - ./.docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777
+      - /var/run
+      - /var/cache/nginx
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+volumes:
+  tile-cache:

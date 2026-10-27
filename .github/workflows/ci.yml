@@ -1,0 +1,52 @@
+name: Validate marker gateway
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  php:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout with pinned Maki icons
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+      - name: Setup PHP with runtime extensions
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2.40.0
+        with:
+          php-version: '8.5'
+          extensions: imagick, dom
+          tools: composer:2.10.3
+          coverage: none
+      - name: Check locked dependencies and security
+        run: |
+          composer validate --strict
+          composer install --no-interaction --prefer-dist --no-progress
+          composer audit --locked --no-dev --no-interaction
+      - name: Test PHP and service behavior
+        run: |
+          composer run lint
+          composer run test
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+      - name: Validate Compose and build immutable runtime
+        run: |
+          docker compose config --quiet
+          docker compose build marker
+      - name: Smoke test HTTP routes
+        run: |
+          docker compose up -d
+          trap 'docker compose down --volumes' EXIT
+          for attempt in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:18181/healthz; then break; fi
+            sleep 2
+          done
+          curl --fail --silent --show-error --output /tmp/pin.png http://127.0.0.1:18181/v4/marker/pin-m+2b82cb.png
+          file /tmp/pin.png | grep -q 'PNG image data'
+          test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:18181/not-a-tile)" = '404'
