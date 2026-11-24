@@ -1,4 +1,4 @@
-FROM php:8.5.12-fpm
+FROM php:8.6.0RC7-fpm
 
 # Pinned installer with an upstream-verified SHA-256 (release 2.12.3).
 ADD https://github.com/mlocati/docker-php-extension-installer/releases/download/2.12.3/install-php-extensions /usr/local/bin/install-php-extensions
